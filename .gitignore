@@ -10,6 +10,7 @@ __pycache__/
 
 # SQLite database
 *.db
+!data/security_alerts.db
 
 # Python environment files
 .env
