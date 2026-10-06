@@ -5,7 +5,7 @@
 from collections import defaultdict, deque
 from datetime import timedelta
 
-from database import save_alert
+from src.database import save_alert
 
 
 TIME_WINDOW = timedelta(minutes=5)
