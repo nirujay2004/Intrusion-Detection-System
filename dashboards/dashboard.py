@@ -1,93 +1,185 @@
-import streamlit as st
 import sqlite3
+from pathlib import Path
+
 import pandas as pd
+import streamlit as st
 
 
 # -----------------------------------------
-# Configuration
-# -----------------------------------------
-
-DATABASE = "data/security_alerts.db"
-
-
-# -----------------------------------------
-# Page configuration
+# Page Configuration
 # -----------------------------------------
 
 st.set_page_config(
-    page_title="Intrusion Detection System",
+    page_title="IDS Security Dashboard",
     page_icon="🛡️",
     layout="wide"
 )
 
 
 # -----------------------------------------
-# Page title
+# Database
+# -----------------------------------------
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+DATABASE = PROJECT_ROOT / "data" / "security_alerts.db"
+
+
+# -----------------------------------------
+# Load Alerts
+# -----------------------------------------
+
+@st.cache_data
+def load_alerts():
+
+    connection = sqlite3.connect(DATABASE)
+
+    query = """
+        SELECT
+            id,
+            timestamp,
+            ip_address,
+            username,
+            alert_type,
+            severity,
+            description
+        FROM alerts
+        ORDER BY id DESC
+    """
+
+    dataframe = pd.read_sql_query(
+        query,
+        connection
+    )
+
+    connection.close()
+
+    return dataframe
+
+
+# -----------------------------------------
+# Header
 # -----------------------------------------
 
 st.title("🛡️ Intrusion Detection System")
-st.subheader("Security Log Monitoring Dashboard")
+
+st.subheader(
+    "Security Log Monitoring & Threat Detection Dashboard"
+)
+
+st.divider()
 
 
 # -----------------------------------------
-# Connect to database
+# Load Data
 # -----------------------------------------
 
-connection = sqlite3.connect(DATABASE)
+alerts = load_alerts()
+
+
+if alerts.empty:
+
+    st.warning("No security alerts found.")
+
+    st.stop()
 
 
 # -----------------------------------------
-# Read alerts
+# Sidebar Filters
 # -----------------------------------------
 
-query = """
-SELECT
-    id,
-    timestamp,
-    ip_address,
-    username,
-    alert_type,
-    severity,
-    description
-FROM alerts
-ORDER BY id DESC
-"""
+st.sidebar.title("🔎 Filters")
 
 
-alerts = pd.read_sql_query(
-    query,
-    connection
+# Severity filter
+
+severity_options = sorted(
+    alerts["severity"].unique()
+)
+
+selected_severity = st.sidebar.multiselect(
+    "Severity",
+    severity_options,
+    default=severity_options
 )
 
 
-connection.close()
+# Alert type filter
+
+alert_type_options = sorted(
+    alerts["alert_type"].unique()
+)
+
+selected_alert_types = st.sidebar.multiselect(
+    "Alert Type",
+    alert_type_options,
+    default=alert_type_options
+)
+
+
+# IP filter
+
+ip_options = sorted(
+    alerts["ip_address"].unique()
+)
+
+selected_ips = st.sidebar.multiselect(
+    "IP Address",
+    ip_options,
+    default=ip_options
+)
+
+
+# Refresh button
+
+if st.sidebar.button("🔄 Refresh Data"):
+
+    st.cache_data.clear()
+
+    st.rerun()
 
 
 # -----------------------------------------
-# Dashboard statistics
+# Apply Filters
 # -----------------------------------------
 
-total_alerts = len(alerts)
+filtered_alerts = alerts[
+    alerts["severity"].isin(selected_severity)
+    &
+    alerts["alert_type"].isin(selected_alert_types)
+    &
+    alerts["ip_address"].isin(selected_ips)
+]
+
+
+# -----------------------------------------
+# Metrics
+# -----------------------------------------
+
+total_alerts = len(filtered_alerts)
 
 high_alerts = len(
-    alerts[alerts["severity"] == "HIGH"]
+    filtered_alerts[
+        filtered_alerts["severity"] == "HIGH"
+    ]
 )
 
 medium_alerts = len(
-    alerts[alerts["severity"] == "MEDIUM"]
+    filtered_alerts[
+        filtered_alerts["severity"] == "MEDIUM"
+    ]
 )
 
-unique_ips = alerts["ip_address"].nunique()
+unique_ips = filtered_alerts[
+    "ip_address"
+].nunique()
 
-
-# -----------------------------------------
-# Display statistics
-# -----------------------------------------
 
 col1, col2, col3, col4 = st.columns(4)
 
 
 with col1:
+
     st.metric(
         "🚨 Total Alerts",
         total_alerts
@@ -95,6 +187,7 @@ with col1:
 
 
 with col2:
+
     st.metric(
         "🔴 High Severity",
         high_alerts
@@ -102,6 +195,7 @@ with col2:
 
 
 with col3:
+
     st.metric(
         "🟠 Medium Severity",
         medium_alerts
@@ -109,23 +203,98 @@ with col3:
 
 
 with col4:
+
     st.metric(
         "🌐 Suspicious IPs",
         unique_ips
     )
 
 
+st.divider()
+
+
 # -----------------------------------------
-# Alert table
+# Charts
+# -----------------------------------------
+
+col1, col2 = st.columns(2)
+
+
+with col1:
+
+    st.subheader("📊 Alerts by Type")
+
+    alert_type_counts = (
+        filtered_alerts["alert_type"]
+        .value_counts()
+    )
+
+    st.bar_chart(
+        alert_type_counts
+    )
+
+
+with col2:
+
+    st.subheader("⚠️ Severity Distribution")
+
+    severity_counts = (
+        filtered_alerts["severity"]
+        .value_counts()
+    )
+
+    st.bar_chart(
+        severity_counts
+    )
+
+
+st.divider()
+
+
+# -----------------------------------------
+# High Severity Warning
+# -----------------------------------------
+
+if high_alerts > 0:
+
+    st.error(
+        f"🚨 {high_alerts} HIGH severity "
+        "security alert(s) detected!"
+    )
+
+
+# -----------------------------------------
+# Security Alerts
+# -----------------------------------------
+
+st.subheader("🚨 Security Alerts")
+
+
+display_data = filtered_alerts[
+    [
+        "timestamp",
+        "ip_address",
+        "username",
+        "alert_type",
+        "severity",
+        "description"
+    ]
+]
+
+
+st.dataframe(
+    display_data,
+    use_container_width=True,
+    hide_index=True
+)
+
+
+# -----------------------------------------
+# Footer
 # -----------------------------------------
 
 st.divider()
 
-st.header("🚨 Security Alerts")
-
-
-st.dataframe(
-    alerts,
-    use_container_width=True,
-    hide_index=True
+st.caption(
+    "Python-Based Rule-Driven Intrusion Detection System"
 )
