@@ -46,6 +46,39 @@ def parse_logs(log_file):
 
 
 # -----------------------------------------
+# Parse a Single Log Line
+# -----------------------------------------
+
+def parse_line(log):
+    """
+    Convert one security log line
+    into a structured dictionary.
+    """
+
+    log = log.strip()
+
+    parts = log.split(",")
+
+    timestamp = datetime.strptime(
+        parts[0],
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    ip_address = parts[1]
+    username = parts[2]
+    status = parts[3]
+
+    event = {
+        "timestamp": timestamp,
+        "ip_address": ip_address,
+        "username": username,
+        "status": status
+    }
+
+    return event
+
+
+# -----------------------------------------
 # Test the parser
 # -----------------------------------------
 
