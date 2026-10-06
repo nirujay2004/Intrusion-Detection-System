@@ -8,6 +8,10 @@ import sqlite3
 DATABASE = "data/security_alerts.db"
 
 
+# -----------------------------------------
+# Create Database
+# -----------------------------------------
+
 def create_database():
 
     connection = sqlite3.connect(DATABASE)
@@ -38,6 +42,10 @@ def create_database():
     connection.close()
 
 
+# -----------------------------------------
+# Save Security Alert
+# -----------------------------------------
+
 def save_alert(
     timestamp,
     ip_address,
@@ -51,19 +59,18 @@ def save_alert(
 
     cursor = connection.cursor()
 
+    # Check whether this alert already exists
     cursor.execute("""
-        INSERT INTO alerts (
-            timestamp,
-            ip_address,
-            username,
-            alert_type,
-            severity,
-            description
-        )
-
-        VALUES (?, ?, ?, ?, ?, ?)
+        SELECT id
+        FROM alerts
+        WHERE timestamp = ?
+        AND ip_address = ?
+        AND username = ?
+        AND alert_type = ?
+        AND severity = ?
+        AND description = ?
     """, (
-        timestamp,
+        str(timestamp),
         ip_address,
         username,
         alert_type,
@@ -71,10 +78,51 @@ def save_alert(
         description
     ))
 
-    connection.commit()
+    existing_alert = cursor.fetchone()
+
+
+    # -----------------------------------------
+    # Insert only if alert does not exist
+    # -----------------------------------------
+
+    if existing_alert is None:
+
+        cursor.execute("""
+            INSERT INTO alerts (
+                timestamp,
+                ip_address,
+                username,
+                alert_type,
+                severity,
+                description
+            )
+
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            str(timestamp),
+            ip_address,
+            username,
+            alert_type,
+            severity,
+            description
+        ))
+
+        connection.commit()
+
+        print("Alert saved to database.")
+
+
+    else:
+
+        print("Duplicate alert ignored.")
+
 
     connection.close()
 
+
+# -----------------------------------------
+# Test Database Creation
+# -----------------------------------------
 
 if __name__ == "__main__":
 
