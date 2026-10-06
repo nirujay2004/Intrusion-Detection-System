@@ -5,89 +5,33 @@
 from datetime import datetime
 
 
-def parse_logs(log_file):
+def parse_line(log_line):
     """
-    Read the security log file and convert
-    each line into a structured dictionary.
-    """
-
-    events = []
-
-    with open(log_file, "r") as file:
-
-        for log in file:
-
-            log = log.strip()
-
-            if not log:
-                continue
-
-            parts = log.split(",")
-
-            timestamp = datetime.strptime(
-                parts[0],
-                "%Y-%m-%d %H:%M:%S"
-            )
-
-            ip_address = parts[1]
-            username = parts[2]
-            status = parts[3]
-
-            event = {
-                "timestamp": timestamp,
-                "ip_address": ip_address,
-                "username": username,
-                "status": status
-            }
-
-            events.append(event)
-
-    return events
-
-
-# -----------------------------------------
-# Parse a Single Log Line
-# -----------------------------------------
-
-def parse_line(log):
-    """
-    Convert one security log line
-    into a structured dictionary.
+    Convert one authentication log line
+    into a structured event.
     """
 
-    log = log.strip()
+    log_line = log_line.strip()
 
-    parts = log.split(",")
+    if not log_line:
+        return None
+
+    parts = log_line.split(",")
+
+    if len(parts) != 4:
+
+        raise ValueError(
+            "Invalid log format"
+        )
 
     timestamp = datetime.strptime(
         parts[0],
         "%Y-%m-%d %H:%M:%S"
     )
 
-    ip_address = parts[1]
-    username = parts[2]
-    status = parts[3]
-
-    event = {
+    return {
         "timestamp": timestamp,
-        "ip_address": ip_address,
-        "username": username,
-        "status": status
+        "ip_address": parts[1],
+        "username": parts[2],
+        "status": parts[3]
     }
-
-    return event
-
-
-# -----------------------------------------
-# Test the parser
-# -----------------------------------------
-
-if __name__ == "__main__":
-
-    logs = parse_logs("data/sample_logs.txt")
-
-    print("Total events:", len(logs))
-
-    for event in logs:
-
-        print(event)

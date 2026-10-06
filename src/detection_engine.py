@@ -1,259 +1,323 @@
 # -----------------------------------------
-# Central Intrusion Detection Engine
+# Real-Time IDS Detection Engine
 # -----------------------------------------
 
-from log_parser import parse_logs
-from database import create_database, save_alert
+from collections import defaultdict, deque
+from datetime import timedelta
+
+from database import save_alert
 
 
-LOG_FILE = "data/sample_logs.txt"
+TIME_WINDOW = timedelta(minutes=5)
 
-# Detection thresholds
-FAILURE_THRESHOLD = 3
-USERNAME_THRESHOLD = 3
-TIME_WINDOW = 5 * 60
+BRUTE_FORCE_THRESHOLD = 3
+USERNAME_ENUMERATION_THRESHOLD = 3
 
 
-# -----------------------------------------
-# Load security events
-# -----------------------------------------
+class DetectionEngine:
 
-events = parse_logs(LOG_FILE)
-create_database()
+    def __init__(self):
 
-# Make sure events are in chronological order
-events.sort(key=lambda event: event["timestamp"])
+        # Failed login timestamps
+        self.failed_attempts = defaultdict(deque)
 
+        # Username activity per IP
+        self.username_activity = defaultdict(deque)
 
-print("\n")
-print("=" * 60)
-print("        INTRUSION DETECTION SYSTEM")
-print("=" * 60)
+        # Track whether an alert has already
+        # been generated for the current attack
+        self.brute_force_alerted = set()
 
+        self.enumeration_alerted = set()
 
-# =========================================================
-# RULE 1 — BRUTE-FORCE DETECTION
-# =========================================================
-
-print("\n[ RULE 1 ] Brute-Force Detection")
-print("-" * 60)
+        self.success_alerted = set()
 
 
-failed_attempts = {}
+    # -----------------------------------------
+    # Process One Event
+    # -----------------------------------------
 
+    def process_event(self, event):
 
-for event in events:
-
-    if event["status"] == "LOGIN_FAILED":
-
-        ip_address = event["ip_address"]
         timestamp = event["timestamp"]
-
-        if ip_address not in failed_attempts:
-            failed_attempts[ip_address] = []
-
-        failed_attempts[ip_address].append(timestamp)
-
-
-brute_force_detected = False
-
-
-for ip_address, timestamps in failed_attempts.items():
-
-    timestamps.sort()
-
-    for i in range(len(timestamps)):
-
-        start_time = timestamps[i]
-
-        count = 1
-
-        for j in range(i + 1, len(timestamps)):
-
-            time_difference = (
-                timestamps[j] - start_time
-            ).total_seconds()
-
-            if time_difference <= TIME_WINDOW:
-                count += 1
-            else:
-                break
-
-        if count >= FAILURE_THRESHOLD:
-
-            print("🚨 ALERT: Possible brute-force attack")
-            print("IP Address:", ip_address)
-            print("Failed Attempts:", count)
-            print("Time Window: 5 minutes")
-            
-            save_alert(
-                timestamp=start_time,
-                ip_address=ip_address,
-                username="Multiple/Unknown",
-                alert_type="Brute Force",
-                severity="HIGH",
-                description=f"{count} failed login attempts within 5 minutes"
-            )
-            
-
-            print("-" * 60)
-
-            brute_force_detected = True
-
-            break
-
-
-if not brute_force_detected:
-
-    print("✅ No brute-force activity detected.")
-
-
-# =========================================================
-# RULE 2 — USERNAME ENUMERATION
-# =========================================================
-
-print("\n[ RULE 2 ] Username Enumeration Detection")
-print("-" * 60)
-
-
-ip_usernames = {}
-
-
-for event in events:
-
-    if event["status"] == "LOGIN_FAILED":
-
         ip_address = event["ip_address"]
         username = event["username"]
+        status = event["status"]
 
-        if ip_address not in ip_usernames:
-            ip_usernames[ip_address] = set()
-
-        ip_usernames[ip_address].add(username)
-
-
-username_attack_detected = False
-
-
-for ip_address, usernames in ip_usernames.items():
-
-    username_count = len(usernames)
-
-    if username_count >= USERNAME_THRESHOLD:
-
-        print("🚨 ALERT: Multiple usernames targeted")
-        print("IP Address:", ip_address)
-        print("Unique Usernames:", username_count)
-        print("Usernames:", ", ".join(usernames))
-        print("Possible account enumeration activity.")
-        
-        save_alert(
-            timestamp=events[-1]["timestamp"],
-            ip_address=ip_address,
-            username="Multiple",
-            alert_type="Username Enumeration",
-            severity="MEDIUM",
-            description=f"{username_count} different usernames targeted"
+        print(
+            f"[EVENT] {timestamp} | "
+            f"{ip_address} | "
+            f"{username} | "
+            f"{status}"
         )
 
-        print("-" * 60)
+        if status == "LOGIN_FAILED":
 
-        username_attack_detected = True
+            self.handle_failed_login(
+                timestamp,
+                ip_address,
+                username
+            )
 
+        elif status == "LOGIN_SUCCESS":
 
-if not username_attack_detected:
-
-    print("✅ No username enumeration detected.")
-
-
-# =========================================================
-# RULE 3 — SUCCESS AFTER MULTIPLE FAILURES
-# =========================================================
-
-print("\n[ RULE 3 ] Successful Login After Repeated Failures")
-print("-" * 60)
-
-
-success_attack_detected = False
+            self.handle_successful_login(
+                timestamp,
+                ip_address,
+                username
+            )
 
 
-for i, event in enumerate(events):
+    # -----------------------------------------
+    # Failed Login
+    # -----------------------------------------
 
-    if event["status"] != "LOGIN_SUCCESS":
-        continue
+    def handle_failed_login(
+        self,
+        timestamp,
+        ip_address,
+        username
+    ):
 
-    ip_address = event["ip_address"]
-    username = event["username"]
+        key = (
+            ip_address,
+            username
+        )
 
-    success_time = event["timestamp"]
+        self.failed_attempts[key].append(
+            timestamp
+        )
 
-    failed_count = 0
+        self.username_activity[
+            ip_address
+        ].append(
+            (timestamp, username)
+        )
 
+        self.cleanup_old_events(
+            timestamp,
+            ip_address,
+            username
+        )
 
-    # Look at previous events
-    for previous_event in reversed(events[:i]):
+        # -----------------------------------------
+        # RULE 1
+        # Brute Force
+        # -----------------------------------------
 
-        # Same IP + same username + failed login
+        failures = len(
+            self.failed_attempts[key]
+        )
+
         if (
-            previous_event["ip_address"] == ip_address
-            and previous_event["username"] == username
-            and previous_event["status"] == "LOGIN_FAILED"
+            failures >= BRUTE_FORCE_THRESHOLD
+            and key not in self.brute_force_alerted
         ):
 
-            time_difference = (
-                success_time - previous_event["timestamp"]
-            ).total_seconds()
+            self.brute_force_alerted.add(key)
 
+            print()
+            print("=" * 50)
+            print("🚨 BRUTE FORCE ATTACK DETECTED")
+            print("=" * 50)
 
-            if time_difference <= TIME_WINDOW:
+            print(
+                f"IP Address : {ip_address}"
+            )
 
-                failed_count += 1
+            print(
+                f"Username   : {username}"
+            )
 
-            else:
+            print(
+                f"Attempts   : {failures}"
+            )
 
-                break
+            print()
 
+            save_alert(
+                timestamp,
+                ip_address,
+                username,
+                "Brute Force",
+                "HIGH",
+                f"{failures} failed login attempts within 5 minutes"
+            )
 
-    if failed_count >= FAILURE_THRESHOLD:
+        # -----------------------------------------
+        # RULE 2
+        # Username Enumeration
+        # -----------------------------------------
 
-        print("🚨 HIGH SEVERITY ALERT")
-        print("IP Address:", ip_address)
-        print("Username:", username)
-        print("Failed Attempts Before Success:", failed_count)
-        print("Time Window: 5 minutes")
-        print("⚠️ Successful login after repeated failures!")
+        activities = self.username_activity[
+            ip_address
+        ]
 
-        save_alert(
-            timestamp=success_time,
-            ip_address=ip_address,
-            username=username,
-            alert_type="Successful Login After Failures",
-            severity="HIGH",
-            description=f"Successful login after {failed_count} failed attempts"
+        unique_usernames = set(
+            user
+            for _, user in activities
         )
-        print("-" * 60)
 
-        success_attack_detected = True
+        if (
+            len(unique_usernames)
+            >= USERNAME_ENUMERATION_THRESHOLD
+            and ip_address
+            not in self.enumeration_alerted
+        ):
+
+            self.enumeration_alerted.add(
+                ip_address
+            )
+
+            print()
+            print("=" * 50)
+            print("🚨 USERNAME ENUMERATION DETECTED")
+            print("=" * 50)
+
+            print(
+                f"IP Address : {ip_address}"
+            )
+
+            print(
+                f"Usernames  : {len(unique_usernames)}"
+            )
+
+            print()
+
+            save_alert(
+                timestamp,
+                ip_address,
+                "Multiple",
+                "Username Enumeration",
+                "MEDIUM",
+                f"{len(unique_usernames)} different usernames targeted"
+            )
 
 
-if not success_attack_detected:
+    # -----------------------------------------
+    # Successful Login
+    # -----------------------------------------
 
-    print("✅ No suspicious successful logins detected.")
+    def handle_successful_login(
+        self,
+        timestamp,
+        ip_address,
+        username
+    ):
+
+        key = (
+            ip_address,
+            username
+        )
+
+        self.cleanup_old_events(
+            timestamp,
+            ip_address,
+            username
+        )
+
+        failures = len(
+            self.failed_attempts[key]
+        )
+
+        # -----------------------------------------
+        # RULE 3
+        # Successful Login After Failures
+        # -----------------------------------------
+
+        if (
+            failures >= BRUTE_FORCE_THRESHOLD
+            and key not in self.success_alerted
+        ):
+
+            self.success_alerted.add(key)
+
+            print()
+            print("=" * 50)
+            print("🚨 SUSPICIOUS SUCCESSFUL LOGIN")
+            print("=" * 50)
+
+            print(
+                f"IP Address : {ip_address}"
+            )
+
+            print(
+                f"Username   : {username}"
+            )
+
+            print(
+                f"Previous failures : {failures}"
+            )
+
+            print()
+
+            save_alert(
+                timestamp,
+                ip_address,
+                username,
+                "Successful Login After Failures",
+                "HIGH",
+                f"Successful login after {failures} failed attempts"
+            )
 
 
-# =========================================================
-# FINAL SUMMARY
-# =========================================================
+    # -----------------------------------------
+    # Remove Old Events
+    # -----------------------------------------
 
-print("\n")
-print("=" * 60)
-print("                 ANALYSIS COMPLETE")
-print("=" * 60)
+    def cleanup_old_events(
+        self,
+        timestamp,
+        ip_address,
+        username
+    ):
 
-print("\nDetection rules executed:")
-print("1. Brute-force detection")
-print("2. Username enumeration detection")
-print("3. Successful login after repeated failures")
+        cutoff = (
+            timestamp - TIME_WINDOW
+        )
 
-print("\nStatus: Security analysis completed.")
-print("=" * 60)
+        key = (
+            ip_address,
+            username
+        )
+
+        while (
+            self.failed_attempts[key]
+            and
+            self.failed_attempts[key][0]
+            < cutoff
+        ):
+
+            self.failed_attempts[key].popleft()
+
+            # Allow a future attack episode
+            # to generate a new alert.
+            self.brute_force_alerted.discard(
+                key
+            )
+
+            self.success_alerted.discard(
+                key
+            )
+
+
+        activity = self.username_activity[
+            ip_address
+        ]
+
+        while (
+            activity
+            and
+            activity[0][0]
+            < cutoff
+        ):
+
+            activity.popleft()
+
+            # If no usernames remain in the
+            # current window, reset enumeration.
+            if not activity:
+
+                self.enumeration_alerted.discard(
+                    ip_address
+                )

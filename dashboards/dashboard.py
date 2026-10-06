@@ -1,11 +1,12 @@
 # -----------------------------------------
-# Real-Time IDS Security Dashboard
+# IDS Security Operations Center
 # -----------------------------------------
 
 import sqlite3
 from pathlib import Path
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 
@@ -14,28 +15,165 @@ import streamlit as st
 # -----------------------------------------
 
 st.set_page_config(
-    page_title="Real-Time IDS Security Dashboard",
+    page_title="IDS Security Operations Center",
     page_icon="🛡️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 
 # -----------------------------------------
-# Database Location
+# Custom CSS
 # -----------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+st.markdown(
+    """
+<style>
 
-DATABASE = PROJECT_ROOT / "data" / "security_alerts.db"
+.stApp {
+    background-color: #0b0f14;
+    color: #e6edf3;
+}
+
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    max-width: 1450px;
+}
+
+h1 {
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+}
+
+h2, h3 {
+    font-weight: 600 !important;
+}
+
+.metric-card {
+    background: #111820;
+    border: 1px solid #26313d;
+    border-radius: 8px;
+    padding: 18px 20px;
+    min-height: 115px;
+}
+
+.metric-label {
+    color: #8b98a7;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.metric-value {
+    color: #f0f6fc;
+    font-size: 2rem;
+    font-weight: 700;
+    margin-top: 8px;
+}
+
+.metric-description {
+    color: #657384;
+    font-size: 0.75rem;
+    margin-top: 5px;
+}
+
+.status-online {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #0d281c;
+    border: 1px solid #1d5c3b;
+    color: #4ade80;
+    padding: 7px 13px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border-radius: 50%;
+}
+
+.section-header {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #8b98a7;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-top: 20px;
+    margin-bottom: 12px;
+}
+
+.latest-alert {
+    background: #111820;
+    border: 1px solid #26313d;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.latest-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #f0f6fc;
+}
+
+.latest-detail {
+    color: #9aa7b5;
+    font-size: 0.82rem;
+    margin-top: 10px;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #0d131a;
+    border-right: 1px solid #202a35;
+}
+
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+</style>
+""",
+    unsafe_allow_html=True
+)
 
 
 # -----------------------------------------
-# Load Latest Alerts
+# Database
+# -----------------------------------------
+
+PROJECT_ROOT = (
+    Path(__file__)
+    .resolve()
+    .parent
+    .parent
+)
+
+DATABASE = (
+    PROJECT_ROOT
+    / "data"
+    / "security_alerts.db"
+)
+
+
+# -----------------------------------------
+# Load Alerts
 # -----------------------------------------
 
 def load_alerts():
 
-    connection = sqlite3.connect(DATABASE)
+    connection = sqlite3.connect(
+        DATABASE
+    )
 
     query = """
         SELECT
@@ -61,53 +199,86 @@ def load_alerts():
 
 
 # -----------------------------------------
-# Dashboard Header
+# Header
 # -----------------------------------------
 
-st.title("🛡️ Real-Time Intrusion Detection System")
-
-st.subheader(
-    "Live Security Log Monitoring & Threat Detection Dashboard"
+header_left, header_right = st.columns(
+    [5, 1]
 )
 
-st.success("🟢 IDS Monitoring Active")
+with header_left:
+
+    st.title(
+        "Intrusion Detection & Response"
+    )
+
+    st.caption(
+        "Real-time authentication threat monitoring"
+    )
+
+
+with header_right:
+
+    st.markdown(
+        """
+        <div style="text-align:right; margin-top:15px;">
+        <span class="status-online">
+        <span class="status-dot"></span>
+        SYSTEM ONLINE
+        </span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 st.divider()
 
 
 # -----------------------------------------
-# Real-Time Dashboard
+# Live Dashboard
 # -----------------------------------------
 
 @st.fragment(run_every="3s")
 def live_dashboard():
 
-    # Load latest database records
     alerts = load_alerts()
 
+
     # -----------------------------------------
-    # No Alerts
+    # Empty State
     # -----------------------------------------
 
     if alerts.empty:
 
         st.info(
-            "🔎 No security alerts detected yet."
+            "No security events detected. "
+            "Monitoring is active."
         )
 
         return
 
 
     # -----------------------------------------
-    # Sidebar Filters
+    # Sidebar
     # -----------------------------------------
 
     with st.sidebar:
 
-        st.title("🔎 Filters")
+        st.markdown(
+            "### Monitoring Controls"
+        )
+
+        st.caption(
+            "Filters apply to the live alert stream."
+        )
+
+        st.divider()
 
         severity_options = sorted(
-            alerts["severity"].dropna().unique()
+            alerts["severity"]
+            .dropna()
+            .unique()
         )
 
         selected_severity = st.multiselect(
@@ -116,33 +287,34 @@ def live_dashboard():
             default=severity_options
         )
 
-
-        alert_type_options = sorted(
-            alerts["alert_type"].dropna().unique()
+        attack_options = sorted(
+            alerts["alert_type"]
+            .dropna()
+            .unique()
         )
 
-        selected_alert_types = st.multiselect(
-            "Alert Type",
-            alert_type_options,
-            default=alert_type_options
+        selected_attacks = st.multiselect(
+            "Detection Type",
+            attack_options,
+            default=attack_options
         )
-
 
         ip_options = sorted(
-            alerts["ip_address"].dropna().unique()
+            alerts["ip_address"]
+            .dropna()
+            .unique()
         )
 
         selected_ips = st.multiselect(
-            "IP Address",
+            "Source IP",
             ip_options,
             default=ip_options
         )
 
-
         st.divider()
 
         st.caption(
-            "Dashboard automatically refreshes every 3 seconds."
+            "Automatic refresh: 3 seconds"
         )
 
 
@@ -150,13 +322,13 @@ def live_dashboard():
     # Apply Filters
     # -----------------------------------------
 
-    filtered_alerts = alerts[
+    filtered = alerts[
         alerts["severity"].isin(
             selected_severity
         )
         &
         alerts["alert_type"].isin(
-            selected_alert_types
+            selected_attacks
         )
         &
         alerts["ip_address"].isin(
@@ -166,148 +338,182 @@ def live_dashboard():
 
 
     # -----------------------------------------
-    # Security Metrics
+    # Metrics
     # -----------------------------------------
 
-    total_alerts = len(filtered_alerts)
+    total_alerts = len(filtered)
 
     high_alerts = len(
-        filtered_alerts[
-            filtered_alerts["severity"] == "HIGH"
+        filtered[
+            filtered["severity"] == "HIGH"
         ]
     )
 
     medium_alerts = len(
-        filtered_alerts[
-            filtered_alerts["severity"] == "MEDIUM"
+        filtered[
+            filtered["severity"] == "MEDIUM"
         ]
     )
 
-    unique_ips = filtered_alerts[
-        "ip_address"
-    ].nunique()
+    unique_sources = (
+        filtered["ip_address"].nunique()
+    )
 
 
     # -----------------------------------------
-    # Metrics
+    # KPI Cards
     # -----------------------------------------
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
 
-        st.metric(
-            "🚨 Total Alerts",
-            total_alerts
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-label">TOTAL ALERTS</div><div class="metric-value">{total_alerts}</div><div class="metric-description">Detected security events</div></div>',
+            unsafe_allow_html=True
         )
 
     with col2:
 
-        st.metric(
-            "🔴 High Severity",
-            high_alerts
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-label">HIGH SEVERITY</div><div class="metric-value">{high_alerts}</div><div class="metric-description">Immediate attention</div></div>',
+            unsafe_allow_html=True
         )
 
     with col3:
 
-        st.metric(
-            "🟠 Medium Severity",
-            medium_alerts
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-label">MEDIUM SEVERITY</div><div class="metric-value">{medium_alerts}</div><div class="metric-description">Suspicious activity</div></div>',
+            unsafe_allow_html=True
         )
 
     with col4:
 
-        st.metric(
-            "🌐 Suspicious IPs",
-            unique_ips
+        st.markdown(
+            f'<div class="metric-card"><div class="metric-label">UNIQUE SOURCES</div><div class="metric-value">{unique_sources}</div><div class="metric-description">Source IP addresses</div></div>',
+            unsafe_allow_html=True
         )
 
 
-    st.divider()
-
-
     # -----------------------------------------
-    # Live Status
+    # Threat Analytics
     # -----------------------------------------
 
     st.markdown(
-        "### 🟢 Live Monitoring"
-    )
-
-    st.caption(
-        "New security alerts are automatically detected "
-        "and displayed without manually refreshing the page."
+        '<div class="section-header">THREAT ANALYTICS</div>',
+        unsafe_allow_html=True
     )
 
 
+    chart1, chart2 = st.columns(2)
+
+
     # -----------------------------------------
-    # Charts
+    # Attack Type Chart
     # -----------------------------------------
 
-    col1, col2 = st.columns(2)
+    with chart1:
 
-
-    with col1:
-
-        st.subheader(
-            "📊 Alerts by Type"
-        )
-
-        alert_type_counts = (
-            filtered_alerts[
-                "alert_type"
-            ]
+        attack_counts = (
+            filtered["alert_type"]
             .value_counts()
+            .reset_index()
         )
 
-        st.bar_chart(
-            alert_type_counts
+        attack_counts.columns = [
+            "Attack Type",
+            "Count"
+        ]
+
+        figure = px.bar(
+            attack_counts,
+            x="Attack Type",
+            y="Count",
+            text="Count"
+        )
+
+        figure.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#111820",
+            plot_bgcolor="#111820",
+            font=dict(
+                color="#c9d1d9"
+            ),
+            margin=dict(
+                l=20,
+                r=20,
+                t=50,
+                b=20
+            ),
+            title="Detections by Attack Type"
+        )
+
+        figure.update_traces(
+            marker_color="#3b82f6"
+        )
+
+        st.plotly_chart(
+            figure,
+            use_container_width=True
         )
 
 
-    with col2:
+    # -----------------------------------------
+    # Severity Chart
+    # -----------------------------------------
 
-        st.subheader(
-            "⚠️ Severity Distribution"
-        )
+    with chart2:
 
         severity_counts = (
-            filtered_alerts[
-                "severity"
-            ]
+            filtered["severity"]
             .value_counts()
+            .reset_index()
         )
 
-        st.bar_chart(
-            severity_counts
+        severity_counts.columns = [
+            "Severity",
+            "Count"
+        ]
+
+        figure = px.pie(
+            severity_counts,
+            names="Severity",
+            values="Count",
+            hole=0.55
+        )
+
+        figure.update_layout(
+            template="plotly_dark",
+            paper_bgcolor="#111820",
+            plot_bgcolor="#111820",
+            font=dict(
+                color="#c9d1d9"
+            ),
+            margin=dict(
+                l=20,
+                r=20,
+                t=50,
+                b=20
+            ),
+            title="Severity Distribution"
+        )
+
+        st.plotly_chart(
+            figure,
+            use_container_width=True
         )
 
 
-    st.divider()
-
-
     # -----------------------------------------
-    # High Severity Warning
+    # Active Alerts
     # -----------------------------------------
 
-    if high_alerts > 0:
-
-        st.error(
-            f"🚨 {high_alerts} HIGH severity "
-            "security alert(s) detected!"
-        )
-
-
-    # -----------------------------------------
-    # Security Alerts
-    # -----------------------------------------
-
-    st.subheader(
-        "🚨 Security Alerts"
+    st.markdown(
+        '<div class="section-header">ACTIVE SECURITY ALERTS</div>',
+        unsafe_allow_html=True
     )
 
-
-    display_data = filtered_alerts[
+    table_data = filtered[
         [
             "timestamp",
             "ip_address",
@@ -316,47 +522,74 @@ def live_dashboard():
             "severity",
             "description"
         ]
+    ].copy()
+
+    table_data.columns = [
+        "Timestamp",
+        "Source IP",
+        "Username",
+        "Detection",
+        "Severity",
+        "Description"
     ]
 
-
     st.dataframe(
-        display_data,
+        table_data,
         use_container_width=True,
-        hide_index=True
+        hide_index=True,
+        height=350
     )
 
 
     # -----------------------------------------
-    # Latest Alert
+    # Latest Detection
     # -----------------------------------------
 
-    st.divider()
+    if not filtered.empty:
 
-    latest_alert = filtered_alerts.iloc[0]
+        latest = filtered.iloc[0]
 
-    st.subheader(
-        "⚡ Latest Security Event"
-    )
+        st.markdown(
+            '<div class="section-header">LATEST DETECTION</div>',
+            unsafe_allow_html=True
+        )
 
-    st.info(
-        f"""
-**Time:** {latest_alert["timestamp"]}
+        if latest["severity"] == "HIGH":
 
-**IP Address:** {latest_alert["ip_address"]}
+            border_color = "#ef4444"
 
-**Username:** {latest_alert["username"]}
+        else:
 
-**Alert:** {latest_alert["alert_type"]}
+            border_color = "#f59e0b"
 
-**Severity:** {latest_alert["severity"]}
 
-**Description:** {latest_alert["description"]}
-"""
-    )
+        latest_html = (
+            '<div class="latest-alert" '
+            f'style="border-left:4px solid {border_color};">'
+            '<div class="latest-title">'
+            f'{latest["alert_type"]} | {latest["severity"]}'
+            '</div>'
+            '<div class="latest-detail">'
+            f'<b>Source:</b> {latest["ip_address"]}'
+            '&nbsp;&nbsp;&nbsp;'
+            f'<b>Account:</b> {latest["username"]}'
+            '&nbsp;&nbsp;&nbsp;'
+            f'<b>Detected:</b> {latest["timestamp"]}'
+            '</div>'
+            '<div class="latest-detail">'
+            f'{latest["description"]}'
+            '</div>'
+            '</div>'
+        )
+
+        st.markdown(
+            latest_html,
+            unsafe_allow_html=True
+        )
 
 
 # -----------------------------------------
-# Start Live Dashboard
+# Run Dashboard
 # -----------------------------------------
 
 live_dashboard()
@@ -369,6 +602,6 @@ live_dashboard()
 st.divider()
 
 st.caption(
-    "Python-Based Real-Time Rule-Driven "
-    "Intrusion Detection System"
+    "Real-Time Rule-Based Intrusion Detection System"
+    " • Monitoring interval: 3 seconds"
 )

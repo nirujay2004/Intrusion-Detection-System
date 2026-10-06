@@ -8,11 +8,7 @@ __pycache__/
 # VS Code
 .vscode/
 
-# SQLite database
-*.db
-!data/security_alerts.db
-
-# Python environment files
+# Environment variables
 .env
 
 # OS files

@@ -1,16 +1,11 @@
 # -----------------------------------------
-# SQLite Database
+# IDS Database
 # -----------------------------------------
 
 import sqlite3
 
-
 DATABASE = "data/security_alerts.db"
 
-
-# -----------------------------------------
-# Create Database
-# -----------------------------------------
 
 def create_database():
 
@@ -20,31 +15,19 @@ def create_database():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS alerts (
-
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-
             timestamp TEXT,
-
             ip_address TEXT,
-
             username TEXT,
-
             alert_type TEXT,
-
             severity TEXT,
-
             description TEXT
         )
     """)
 
     connection.commit()
-
     connection.close()
 
-
-# -----------------------------------------
-# Save Security Alert
-# -----------------------------------------
 
 def save_alert(
     timestamp,
@@ -59,7 +42,7 @@ def save_alert(
 
     cursor = connection.cursor()
 
-    # Check whether this alert already exists
+    # Prevent exact duplicate alerts
     cursor.execute("""
         SELECT id
         FROM alerts
@@ -78,14 +61,9 @@ def save_alert(
         description
     ))
 
-    existing_alert = cursor.fetchone()
+    existing = cursor.fetchone()
 
-
-    # -----------------------------------------
-    # Insert only if alert does not exist
-    # -----------------------------------------
-
-    if existing_alert is None:
+    if existing is None:
 
         cursor.execute("""
             INSERT INTO alerts (
@@ -96,7 +74,6 @@ def save_alert(
                 severity,
                 description
             )
-
             VALUES (?, ?, ?, ?, ?, ?)
         """, (
             str(timestamp),
@@ -109,23 +86,17 @@ def save_alert(
 
         connection.commit()
 
-        print("Alert saved to database.")
-
+        print("💾 Alert saved to database.")
 
     else:
 
         print("Duplicate alert ignored.")
 
-
     connection.close()
 
-
-# -----------------------------------------
-# Test Database Creation
-# -----------------------------------------
 
 if __name__ == "__main__":
 
     create_database()
 
-    print("Database created successfully!")
+    print("Database initialized successfully.")
