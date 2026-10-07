@@ -1,220 +1,134 @@
-# -----------------------------------------
-# Authentication Event Simulator
-# -----------------------------------------
-
-import time
+import os
 from datetime import datetime
 
-LOG_FILE = "data/sample_logs.txt"
+import requests
 
 
-def write_event(
+API_URL = (
+    os.getenv("IDS_API_URL")
+    or "http://127.0.0.1:8000"
+).rstrip("/") + "/network-events"
+
+
+def send_event(
     ip_address,
-    username,
-    status
+    alert_type,
+    severity,
+    description
 ):
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "ip_address": ip_address,
+        "username": "N/A",
+        "alert_type": alert_type,
+        "severity": severity,
+        "description": description
+    }
 
-    timestamp = datetime.now().replace(
-        microsecond=0
-    )
-
-    log_line = (
-        f"{timestamp},"
-        f"{ip_address},"
-        f"{username},"
-        f"{status}\n"
-    )
-
-    with open(
-        LOG_FILE,
-        "a"
-    ) as file:
-
-        file.write(
-            log_line
+    try:
+        response = requests.post(
+            API_URL,
+            json=payload,
+            timeout=5
         )
-
-    print(
-        f"EVENT → "
-        f"{ip_address} | "
-        f"{username} | "
-        f"{status}"
-    )
-
-
-# -----------------------------------------
-# Scenario 1
-# Brute Force
-# -----------------------------------------
-
-def brute_force():
-
-    ip = "10.10.10.50"
-    username = "admin"
-
-    print()
-    print("===================================")
-    print("SIMULATING BRUTE FORCE")
-    print("===================================")
-
-    for i in range(3):
-
-        write_event(
-            ip,
-            username,
-            "LOGIN_FAILED"
-        )
-
-        time.sleep(2)
-
-
-# -----------------------------------------
-# Scenario 2
-# Username Enumeration
-# -----------------------------------------
-
-def username_enumeration():
-
-    ip = "10.10.10.60"
-
-    usernames = [
-        "admin",
-        "john",
-        "manager"
-    ]
-
-    print()
-    print("===================================")
-    print("SIMULATING USERNAME ENUMERATION")
-    print("===================================")
-
-    for username in usernames:
-
-        write_event(
-            ip,
-            username,
-            "LOGIN_FAILED"
-        )
-
-        time.sleep(2)
-
-
-# -----------------------------------------
-# Scenario 3
-# Successful Login After Failures
-# -----------------------------------------
-
-def suspicious_login():
-
-    ip = "10.10.10.70"
-    username = "admin"
-
-    print()
-    print("===================================")
-    print("SIMULATING SUSPICIOUS LOGIN")
-    print("===================================")
-
-    for i in range(3):
-
-        write_event(
-            ip,
-            username,
-            "LOGIN_FAILED"
-        )
-
-        time.sleep(2)
-
-    write_event(
-        ip,
-        username,
-        "LOGIN_SUCCESS"
-    )
-
-
-# -----------------------------------------
-# Normal Login
-# -----------------------------------------
-
-def normal_login():
-
-    ip = "10.10.10.20"
-
-    print()
-    print("===================================")
-    print("SIMULATING NORMAL LOGIN")
-    print("===================================")
-
-    write_event(
-        ip,
-        "employee",
-        "LOGIN_SUCCESS"
-    )
-
-
-# -----------------------------------------
-# Main Demo
-# -----------------------------------------
-
-def main():
-
-    print()
-    print("=" * 55)
-    print("       AUTHENTICATION EVENT SIMULATOR")
-    print("=" * 55)
-
-    print()
-    print("Choose a scenario:")
-    print()
-    print("1. Normal Login")
-    print("2. Brute Force Attack")
-    print("3. Username Enumeration")
-    print("4. Successful Login After Failures")
-    print("5. Run Complete Demo")
-    print()
-
-    choice = input(
-        "Enter choice: "
-    ).strip()
-
-    if choice == "1":
-
-        normal_login()
-
-    elif choice == "2":
-
-        brute_force()
-
-    elif choice == "3":
-
-        username_enumeration()
-
-    elif choice == "4":
-
-        suspicious_login()
-
-    elif choice == "5":
-
-        normal_login()
-
-        time.sleep(2)
-
-        brute_force()
-
-        time.sleep(3)
-
-        username_enumeration()
-
-        time.sleep(3)
-
-        suspicious_login()
-
-    else:
 
         print(
-            "Invalid choice."
+            f"[EVENT] {alert_type} | "
+            f"Source: {ip_address} | "
+            f"Status: {response.status_code}"
         )
+
+        if response.status_code != 200:
+            print("Response:", response.text)
+
+    except requests.exceptions.RequestException as error:
+        print("Could not connect to FastAPI:", error)
+
+
+def port_scan():
+    print("\nStarting Port Scan simulation...")
+
+    send_event(
+        "10.10.10.50",
+        "Port Scan",
+        "HIGH",
+        "15 destination ports contacted within 4.2 seconds"
+    )
+
+
+def syn_flood():
+    print("\nStarting SYN Flood simulation...")
+
+    send_event(
+        "10.10.10.60",
+        "SYN Flood",
+        "HIGH",
+        "100 SYN packets detected within 3.0 seconds"
+    )
+
+
+def icmp_flood():
+    print("\nStarting ICMP Flood simulation...")
+
+    send_event(
+        "10.10.10.70",
+        "ICMP Flood",
+        "HIGH",
+        "100 ICMP packets detected within 3.0 seconds"
+    )
+
+
+def normal_traffic():
+    print("\nGenerating normal traffic...")
+
+    send_event(
+        "192.168.1.20",
+        "Normal Traffic",
+        "LOW",
+        "Normal network activity detected"
+    )
+
+
+def main():
+    print("=" * 60)
+    print("REAL-TIME IDS EVENT GENERATOR")
+    print("=" * 60)
+
+    while True:
+        print("\nChoose an event to simulate:")
+        print("1. Port Scan")
+        print("2. SYN Flood")
+        print("3. ICMP Flood")
+        print("4. Normal Traffic")
+        print("5. Run all attacks")
+        print("0. Exit")
+
+        choice = input("\nEnter choice: ").strip()
+
+        if choice == "1":
+            port_scan()
+
+        elif choice == "2":
+            syn_flood()
+
+        elif choice == "3":
+            icmp_flood()
+
+        elif choice == "4":
+            normal_traffic()
+
+        elif choice == "5":
+            port_scan()
+            syn_flood()
+            icmp_flood()
+
+        elif choice == "0":
+            print("Exiting event generator.")
+            break
+
+        else:
+            print("Invalid choice.")
 
 
 if __name__ == "__main__":
-
     main()

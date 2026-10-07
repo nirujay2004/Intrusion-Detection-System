@@ -1,0 +1,27 @@
+services:
+
+  api:
+    build: .
+    container_name: ids-api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONPATH=/app
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    container_name: ids-dashboard
+    command: streamlit run dashboards/dashboard.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - IDS_API_URL=http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
